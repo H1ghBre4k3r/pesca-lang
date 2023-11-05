@@ -144,6 +144,8 @@ macro_rules! node_comb {
         };
     };
 }
+
+#[allow(dead_code)]
 impl<'a> Comb<'a, TokenKind, Terminal, AstNode> {
     terminal_comb!(LET, Let);
 

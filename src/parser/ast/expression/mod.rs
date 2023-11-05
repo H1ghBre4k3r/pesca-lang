@@ -63,21 +63,15 @@ impl FromTokens<TokenKind> for Expression {
             };
             Expression::Parens(Box::new(expr))
         } else {
-            let matcher =
-                Comb::FUNCTION | Comb::IF | Comb::NUM | Comb::ID | Comb::LAMBDA | Comb::BLOCK;
-            let result = matcher.parse(tokens)?;
-            match result.get(0) {
-                Some(AstNode::Id(id)) => Expression::Id(id.clone()),
-                Some(AstNode::Num(num)) => Expression::Num(num.clone()),
-                Some(AstNode::Function(func)) => {
-                    return Ok(Expression::Function(func.clone()).into())
-                }
-                Some(AstNode::Lambda(lambda)) => {
-                    return Ok(Expression::Lambda(lambda.clone()).into())
-                }
-                Some(AstNode::If(if_expression)) => Expression::If(if_expression.clone()),
-                Some(AstNode::Block(block)) => Expression::Block(block.clone()),
-                None | Some(_) => unreachable!(),
+            let result = Self::parse_concrete_expression(tokens)?;
+            match result {
+                AstNode::Id(id) => Expression::Id(id.clone()),
+                AstNode::Num(num) => Expression::Num(num.clone()),
+                AstNode::Function(func) => return Ok(Expression::Function(func.clone()).into()),
+                AstNode::Lambda(lambda) => return Ok(Expression::Lambda(lambda.clone()).into()),
+                AstNode::If(if_expression) => Expression::If(if_expression.clone()),
+                AstNode::Block(block) => Expression::Block(block.clone()),
+                _ => unreachable!(),
             }
         };
 
@@ -123,6 +117,28 @@ impl FromTokens<TokenKind> for Expression {
 }
 
 impl Expression {
+    fn parse_concrete_expression(tokens: &mut Tokens<TokenKind>) -> Result<AstNode, ParseError> {
+        let Some(next) = tokens.peek() else {
+            return Err(ParseError {
+                message: "reached EOF while trying to parse expression".to_string(),
+                position: None,
+            });
+        };
+
+        match next {
+            TokenKind::FnKeyword { .. } => Function::parse(tokens),
+            TokenKind::IfKeyword { .. } => If::parse(tokens),
+            TokenKind::Num { .. } => Num::parse(tokens),
+            TokenKind::Id { .. } => Id::parse(tokens),
+            TokenKind::Backslash { .. } => Lambda::parse(tokens),
+            TokenKind::LBrace { .. } => Block::parse(tokens),
+            token => Err(ParseError {
+                message: format!("Unexpected '{token:?}' while trying to parse expression"),
+                position: Some(token.position()),
+            }),
+        }
+    }
+
     fn parse_call(expr: Expression, tokens: &mut Tokens<TokenKind>) -> Result<Postfix, ParseError> {
         let matcher = Comb::LPAREN >> (Comb::EXPR % Comb::COMMA) >> Comb::RPAREN;
 
