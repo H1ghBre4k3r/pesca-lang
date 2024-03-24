@@ -12,6 +12,7 @@ pub use self::initialisation::*;
 pub use self::struct_declaration::*;
 pub use self::while_loop::*;
 
+use crate::lexer::GetPosition;
 use crate::{
     lexer::{Token, Tokens},
     parser::{combinators::Comb, FromTokens, ParseError},
@@ -132,7 +133,7 @@ impl FromTokens<Token> for Statement<()> {
 
                 Err(ParseError {
                     message: "could not parse statement".into(),
-                    position: None,
+                    position: Some(next.position()),
                 })
             }
         }
@@ -184,6 +185,28 @@ impl From<Statement<()>> for AstNode {
     }
 }
 
+impl<T> Statement<T>
+where
+    T: Clone,
+{
+    pub fn get_info(&self) -> T {
+        match self {
+            Statement::Function(Function { info, .. }) => info.clone(),
+            Statement::If(If { info, .. }) => info.clone(),
+            Statement::WhileLoop(WhileLoop { info, .. }) => info.clone(),
+            Statement::Initialization(Initialisation { info, .. }) => info.clone(),
+            Statement::Constant(Constant { info, .. }) => info.clone(),
+            Statement::Assignment(Assignment { info, .. }) => info.clone(),
+            Statement::Expression(exp) => exp.get_info(),
+            Statement::YieldingExpression(exp) => exp.get_info(),
+            Statement::Return(exp) => exp.get_info(),
+            Statement::Comment(_) => unimplemented!("Comments to not have type information"),
+            Statement::Declaration(Declaration { info, .. }) => info.clone(),
+            Statement::StructDeclaration(StructDeclaration { info, .. }) => info.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -204,7 +227,10 @@ mod tests {
 
         assert_eq!(
             Ok(Statement::Constant(Constant {
-                id: Id("foo".into(), ()),
+                id: Id {
+                    name: "foo".into(),
+                    info: ()
+                },
                 type_name: TypeName::Literal("i32".into()),
                 value: Expression::Num(Num::Integer(42, ())),
                 info: ()
@@ -237,18 +263,23 @@ mod tests {
 
         assert_eq!(
             Ok(Statement::If(If {
-                condition: Box::new(Expression::Id(Id("x".into(), ()))),
+                condition: Box::new(Expression::Id(Id {
+                    name: "x".into(),
+                    info: ()
+                })),
                 statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression::Addition(
-                        Expression::Num(Num::Integer(3, ())),
-                        Expression::Num(Num::Integer(4, ()))
-                    )
+                    BinaryExpression::Addition {
+                        left: Expression::Num(Num::Integer(3, ())),
+                        right: Expression::Num(Num::Integer(4, ())),
+                        info: (),
+                    }
                 )))],
                 else_statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression::Addition(
-                        Expression::Num(Num::Integer(42, ())),
-                        Expression::Num(Num::Integer(1337, ()))
-                    )
+                    BinaryExpression::Addition {
+                        left: Expression::Num(Num::Integer(42, ())),
+                        right: Expression::Num(Num::Integer(1337, ())),
+                        info: (),
+                    }
                 )))],
                 info: ()
             })
@@ -268,18 +299,23 @@ mod tests {
 
         assert_eq!(
             Ok(Statement::If(If {
-                condition: Box::new(Expression::Id(Id("x".into(), ()))),
+                condition: Box::new(Expression::Id(Id {
+                    name: "x".into(),
+                    info: ()
+                })),
                 statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression::Addition(
-                        Expression::Num(Num::Integer(3, ())),
-                        Expression::Num(Num::Integer(4, ()))
-                    )
+                    BinaryExpression::Addition {
+                        left: Expression::Num(Num::Integer(3, ())),
+                        right: Expression::Num(Num::Integer(4, ())),
+                        info: (),
+                    }
                 )))],
                 else_statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression::Addition(
-                        Expression::Num(Num::Integer(42, ())),
-                        Expression::Num(Num::Integer(1337, ()))
-                    )
+                    BinaryExpression::Addition {
+                        left: Expression::Num(Num::Integer(42, ())),
+                        right: Expression::Num(Num::Integer(1337, ())),
+                        info: (),
+                    }
                 )))],
                 info: ()
             })
@@ -299,18 +335,23 @@ mod tests {
 
         assert_eq!(
             Ok(Statement::If(If {
-                condition: Box::new(Expression::Id(Id("x".into(), ()))),
+                condition: Box::new(Expression::Id(Id {
+                    name: "x".into(),
+                    info: ()
+                })),
                 statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression::Addition(
-                        Expression::Num(Num::Integer(3, ())),
-                        Expression::Num(Num::Integer(4, ()))
-                    )
+                    BinaryExpression::Addition {
+                        left: Expression::Num(Num::Integer(3, ())),
+                        right: Expression::Num(Num::Integer(4, ())),
+                        info: (),
+                    }
                 )))],
                 else_statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression::Addition(
-                        Expression::Num(Num::Integer(42, ())),
-                        Expression::Num(Num::Integer(1337, ()))
-                    )
+                    BinaryExpression::Addition {
+                        left: Expression::Num(Num::Integer(42, ())),
+                        right: Expression::Num(Num::Integer(1337, ())),
+                        info: (),
+                    }
                 )))],
                 info: ()
             })
@@ -327,7 +368,10 @@ mod tests {
 
         assert_eq!(
             Ok(Statement::Assignment(Assignment {
-                id: Id("x".into(), ()),
+                id: Id {
+                    name: "x".into(),
+                    info: ()
+                },
                 value: Expression::Num(Num::Integer(42, ())),
                 info: ()
             })

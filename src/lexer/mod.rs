@@ -25,6 +25,8 @@ pub struct Lexer<'a> {
     tokens: Vec<Token>,
     lexikon: Lexikon,
     position: usize,
+    col: usize,
+    line: usize,
     input: &'a str,
 }
 
@@ -34,18 +36,24 @@ impl<'a> Lexer<'a> {
             tokens: vec![],
             lexikon: Lexikon::new(),
             position: 0,
+            col: 1,
+            line: 1,
             input,
         }
     }
 
     fn eat_whitespace(&mut self) {
-        while self
-            .input
-            .as_bytes()
-            .get(self.position)
-            .map(|c| c.is_ascii_whitespace())
-            .unwrap_or(false)
-        {
+        while let Some(c) = self.input.as_bytes().get(self.position) {
+            if !c.is_ascii_whitespace() {
+                return;
+            }
+
+            if *c == b'\n' {
+                self.line += 1;
+                self.col = 1;
+            } else {
+                self.col += 1;
+            }
             self.position += 1;
         }
     }
@@ -55,7 +63,11 @@ impl<'a> Lexer<'a> {
             self.eat_whitespace();
             let (len, res) = self
                 .lexikon
-                .find_longest_match(&self.input[self.position..], self.position)
+                .find_longest_match(
+                    &self.input[self.position..],
+                    (self.line, self.col),
+                    self.input.to_string(),
+                )
                 .clone();
 
             match res {
@@ -63,17 +75,17 @@ impl<'a> Lexer<'a> {
                 None => {
                     if self.position == self.input.len() {
                         return Ok(self.tokens);
-                    } else {
-                        panic!(
-                            "Failed to lex '{}' at position {}; remaining '{}'",
-                            self.input,
-                            self.position,
-                            &self.input[self.position..]
-                        );
                     }
+                    panic!(
+                        "Failed to lex '{}' at position {}; remaining '{}'",
+                        self.input,
+                        self.position,
+                        &self.input[self.position..]
+                    );
                 }
             };
             self.position += len;
+            self.col += len;
         }
 
         Ok(self.tokens)
@@ -91,7 +103,11 @@ mod tests {
         assert_eq!(
             Ok(vec![Token::Id {
                 value: "letter".into(),
-                position: 0
+                position: Span {
+                    line: 0,
+                    col: 0..0,
+                    source: "".into()
+                }
             }]),
             lexer.lex()
         )
@@ -104,7 +120,11 @@ mod tests {
         assert_eq!(
             Ok(vec![Token::Integer {
                 value: 1337,
-                position: 0
+                position: Span {
+                    line: 0,
+                    col: 0..0,
+                    source: "".into()
+                }
             }]),
             lexer.lex()
         )
@@ -116,11 +136,41 @@ mod tests {
 
         assert_eq!(
             Ok(vec![
-                Token::FnKeyword { position: 0 },
-                Token::LParen { position: 0 },
-                Token::RParen { position: 0 },
-                Token::LBrace { position: 0 },
-                Token::RBrace { position: 0 }
+                Token::FnKeyword {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                },
+                Token::LParen {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                },
+                Token::RParen {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                },
+                Token::LBrace {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                },
+                Token::RBrace {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                }
             ]),
             lexer.lex()
         );
@@ -132,17 +182,43 @@ mod tests {
 
         assert_eq!(
             Ok(vec![
-                Token::Let { position: 0 },
+                Token::Let {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                },
                 Token::Id {
                     value: "foo".into(),
-                    position: 0
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
                 },
-                Token::Assign { position: 0 },
+                Token::Assign {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                },
                 Token::Integer {
                     value: 42,
-                    position: 0
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
                 },
-                Token::Semicolon { position: 0 }
+                Token::Semicolon {
+                    position: Span {
+                        line: 0,
+                        col: 0..0,
+                        source: "".into()
+                    }
+                }
             ]),
             lexer.lex()
         );

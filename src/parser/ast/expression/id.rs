@@ -1,10 +1,13 @@
 use crate::{
-    lexer::{Token, Tokens},
+    lexer::{GetPosition, Token, Tokens},
     parser::{ast::AstNode, FromTokens, ParseError},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Id<T>(pub String, pub T);
+pub struct Id<T> {
+    pub name: String,
+    pub info: T,
+}
 
 impl FromTokens<Token> for Id<()> {
     fn parse(tokens: &mut Tokens<Token>) -> Result<AstNode, crate::parser::ParseError>
@@ -21,7 +24,11 @@ impl FromTokens<Token> for Id<()> {
             }
             None => return Err(ParseError::eof("Id")),
         };
-        Ok(Id(value, ()).into())
+        Ok(Id {
+            name: value,
+            info: (),
+        }
+        .into())
     }
 }
 
@@ -33,17 +40,26 @@ impl From<Id<()>> for AstNode {
 
 #[cfg(test)]
 mod tests {
+    use crate::lexer::Span;
+
     use super::*;
 
     #[test]
     fn test_parse() {
         let tokens = vec![Token::Id {
             value: "some_id".into(),
-            position: 0,
+            position: Span {
+                line: 1,
+                col: 0..0,
+                source: "".into(),
+            },
         }];
         assert_eq!(
             Id::parse(&mut tokens.into()),
-            Ok(AstNode::Id(Id("some_id".into(), ())))
+            Ok(AstNode::Id(Id {
+                name: "some_id".into(),
+                info: ()
+            }))
         );
     }
 
@@ -51,7 +67,11 @@ mod tests {
     fn test_error_on_non_id() {
         let tokens = vec![Token::Integer {
             value: 3,
-            position: 0,
+            position: Span {
+                line: 0,
+                col: 0..0,
+                source: "".into(),
+            },
         }];
         assert!(Id::parse(&mut tokens.into()).is_err());
     }

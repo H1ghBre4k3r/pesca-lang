@@ -1,5 +1,5 @@
 use crate::{
-    lexer::{Token, Tokens},
+    lexer::{GetPosition, Token, Tokens},
     parser::{ast::AstNode, FromTokens, ParseError},
 };
 
@@ -28,6 +28,18 @@ impl FromTokens<Token> for Num<()> {
     }
 }
 
+impl<T> Num<T>
+where
+    T: Clone,
+{
+    pub fn get_info(&self) -> T {
+        match self {
+            Num::Integer(_, info) => info.clone(),
+            Num::FloatingPoint(_, info) => info.clone(),
+        }
+    }
+}
+
 impl From<Num<()>> for AstNode {
     fn from(value: Num<()>) -> Self {
         AstNode::Num(value)
@@ -36,7 +48,7 @@ impl From<Num<()>> for AstNode {
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::Lexer;
+    use crate::lexer::{Lexer, Span};
 
     use super::*;
 
@@ -44,7 +56,11 @@ mod tests {
     fn test_parse() {
         let tokens = vec![Token::Integer {
             value: 42,
-            position: 0,
+            position: Span {
+                line: 0,
+                col: 0..0,
+                source: "".into(),
+            },
         }];
         assert_eq!(
             Num::parse(&mut tokens.into()),
@@ -56,7 +72,11 @@ mod tests {
     fn test_error_on_non_num() {
         let tokens = vec![Token::Id {
             value: "some_id".into(),
-            position: 0,
+            position: Span {
+                line: 1,
+                col: 0..0,
+                source: "".into(),
+            },
         }];
         assert!(Num::parse(&mut tokens.into()).is_err());
     }
