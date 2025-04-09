@@ -1,7 +1,23 @@
-fn foo(): void {
-    struct FooStruct {
-        id: i64;
-        amount: f64;
-    };
+struct FooStruct {
+    id: i64;
+    amount: f64;
 }
 
+instance FooStruct {
+    fn get_id(): i64 {
+        this.id
+    }
+
+    fn get_amount(): f64 {
+        this.amount
+    }
+}
+
+fn main(): void {
+    let foo = FooStruct {
+        id: 42,
+        amount: 133.7
+    };
+
+    let id = foo.get_id();
+}
