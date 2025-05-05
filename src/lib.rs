@@ -1,6 +1,6 @@
 use std::{fs, process};
 
-use clap::{command, Parser};
+use clap::{Parser, command};
 use why_lib::{lexer::Lexer, parser::parse, typechecker::TypeChecker};
 
 #[derive(Parser, Debug)]
@@ -58,7 +58,7 @@ pub fn compile_file(args: Cli) -> anyhow::Result<()> {
         }
     };
 
-    println!("{checked:#?}");
+    // println!("{checked:#?}");
 
     Ok(())
 }

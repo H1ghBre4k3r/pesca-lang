@@ -4,7 +4,10 @@ use crate::{
     parser::ast::{Id, Initialisation},
     typechecker::{
         context::Context,
-        error::{RedefinedConstant, TypeCheckError, TypeMismatch, UndefinedType},
+        error::{
+            MissingInitialisationType, RedefinedConstant, TypeCheckError, TypeMismatch,
+            UndefinedType,
+        },
         types::Type,
         TypeCheckable, TypeInformation, TypeResult, TypedConstruct,
     },
@@ -73,6 +76,11 @@ impl TypeCheckable for Initialisation<()> {
                     position,
                 ));
             }
+        } else if !info.has_type() {
+            return Err(TypeCheckError::MissingInitialisationType(
+                MissingInitialisationType,
+                init_position,
+            ));
         }
 
         if ctx
@@ -132,9 +140,10 @@ impl TypedConstruct for Initialisation<TypeInformation> {}
 mod tests {
     use std::{cell::RefCell, error::Error, rc::Rc};
 
+    use crate::typechecker::error::MissingInitialisationType;
     use crate::{
         lexer::Span,
-        parser::ast::{Expression, Id, Initialisation, Lambda, LambdaParameter, Num, TypeName},
+        parser::ast::{Expression, Id, Initialisation, Lambda, Num, TypeName},
         typechecker::{
             context::Context,
             error::{TypeCheckError, TypeMismatch},
@@ -273,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn test_correct_type_propagation_simple() -> Result<(), Box<dyn Error>> {
+    fn test_error_on_missing_type() -> Result<(), Box<dyn Error>> {
         let mut ctx = Context::default();
 
         let init = Initialisation {
@@ -294,290 +303,14 @@ mod tests {
             position: Span::default(),
         };
 
-        let init = init.check(&mut ctx)?;
+        let res = init.check(&mut ctx);
 
         assert_eq!(
-            init,
-            Initialisation {
-                id: Id {
-                    name: "foo".into(),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(None)),
-                        context: Context::default(),
-                    },
-                    position: Span::default(),
-                },
-                mutable: false,
-                type_name: None,
-                value: Expression::Lambda(Lambda {
-                    parameters: vec![],
-                    expression: Box::new(Expression::Num(Num::Integer(
-                        42,
-                        TypeInformation {
-                            type_id: Rc::new(RefCell::new(Some(Type::Integer))),
-                            context: Context::default(),
-                        },
-                        Span::default()
-                    ))),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(None)),
-                        context: Context::default(),
-                    },
-                    position: Span::default(),
-                }),
-                info: TypeInformation {
-                    type_id: Rc::new(RefCell::new(Some(Type::Void))),
-                    context: Context::default(),
-                },
-                position: Span::default()
-            }
-        );
-
-        let Some(type_id) = ctx.scope.resolve_name("foo") else {
-            unreachable!()
-        };
-
-        assert_eq!(type_id, Rc::new(RefCell::new(None)));
-
-        ctx.scope.update_variable(
-            "foo",
-            Type::Function {
-                params: vec![],
-                return_value: Box::new(Type::Integer),
-            },
-        )?;
-
-        assert_eq!(
-            init,
-            Initialisation {
-                id: Id {
-                    name: "foo".into(),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(Some(Type::Function {
-                            params: vec![],
-                            return_value: Box::new(Type::Integer),
-                        }))),
-                        context: Context::default(),
-                    },
-                    position: Span::default(),
-                },
-                mutable: false,
-                type_name: None,
-                value: Expression::Lambda(Lambda {
-                    parameters: vec![],
-                    expression: Box::new(Expression::Num(Num::Integer(
-                        42,
-                        TypeInformation {
-                            type_id: Rc::new(RefCell::new(Some(Type::Integer))),
-                            context: Context::default(),
-                        },
-                        Span::default()
-                    ))),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(Some(Type::Function {
-                            params: vec![],
-                            return_value: Box::new(Type::Integer),
-                        }))),
-                        context: Context::default(),
-                    },
-                    position: Span::default(),
-                }),
-                info: TypeInformation {
-                    type_id: Rc::new(RefCell::new(Some(Type::Void))),
-                    context: Context::default(),
-                },
-                position: Span::default()
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_correct_type_propagation_complex() -> Result<(), Box<dyn Error>> {
-        let mut ctx = Context::default();
-
-        let init = Initialisation {
-            id: Id {
-                name: "foo".into(),
-                info: (),
-                position: Span::default(),
-            },
-            mutable: false,
-            type_name: None,
-            value: Expression::Lambda(Lambda {
-                parameters: vec![LambdaParameter {
-                    name: Id {
-                        name: "bar".into(),
-                        info: (),
-                        position: Span::default(),
-                    },
-                    info: (),
-                    position: Span::default(),
-                }],
-                expression: Box::new(Expression::Id(Id {
-                    name: "bar".into(),
-                    info: (),
-                    position: Span::default(),
-                })),
-                info: (),
-                position: Span::default(),
-            }),
-            info: (),
-            position: Span::default(),
-        };
-
-        let mut init = init.check(&mut ctx)?;
-
-        assert_eq!(
-            init,
-            Initialisation {
-                id: Id {
-                    name: "foo".into(),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(None)),
-                        context: Context::default(),
-                    },
-                    position: Span::default(),
-                },
-                mutable: false,
-                type_name: None,
-                value: Expression::Lambda(Lambda {
-                    parameters: vec![LambdaParameter {
-                        name: Id {
-                            name: "bar".into(),
-                            info: TypeInformation {
-                                type_id: Rc::new(RefCell::new(None)),
-                                context: Context::default(),
-                            },
-                            position: Span::default(),
-                        },
-                        info: TypeInformation {
-                            type_id: Rc::new(RefCell::new(None)),
-                            context: Context::default(),
-                        },
-                        position: Span::default()
-                    }],
-                    expression: Box::new(Expression::Id(Id {
-                        name: "bar".into(),
-                        info: TypeInformation {
-                            type_id: Rc::new(RefCell::new(None)),
-                            context: Context::default(),
-                        },
-                        position: Span::default(),
-                    })),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(None)),
-                        context: Context::default(),
-                    },
-                    position: Span::default()
-                }),
-                info: TypeInformation {
-                    type_id: Rc::new(RefCell::new(Some(Type::Void))),
-                    context: Context::default(),
-                },
-                position: Span::default()
-            }
-        );
-
-        let Some(type_id) = ctx.scope.resolve_name("foo") else {
-            unreachable!()
-        };
-
-        assert_eq!(type_id, Rc::new(RefCell::new(None)));
-
-        assert_eq!(
-            ctx.scope.update_variable("foo", Type::Integer),
-            Err(TypeCheckError::TypeMismatch(
-                TypeMismatch {
-                    expected: Type::Function {
-                        params: vec![Type::Unknown],
-                        return_value: Box::new(Type::Unknown),
-                    },
-                    actual: Type::Integer
-                },
+            res,
+            Err(TypeCheckError::MissingInitialisationType(
+                MissingInitialisationType,
                 Span::default()
             ))
-        );
-
-        ctx.scope.update_variable(
-            "foo",
-            Type::Function {
-                params: vec![Type::Integer],
-                return_value: Box::new(Type::Integer),
-            },
-        )?;
-
-        assert_eq!(
-            init,
-            Initialisation {
-                id: Id {
-                    name: "foo".into(),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(Some(Type::Function {
-                            params: vec![Type::Integer],
-                            return_value: Box::new(Type::Integer),
-                        }))),
-                        context: Context::default(),
-                    },
-                    position: Span::default(),
-                },
-                mutable: false,
-                type_name: None,
-                value: Expression::Lambda(Lambda {
-                    parameters: vec![LambdaParameter {
-                        name: Id {
-                            name: "bar".into(),
-                            info: TypeInformation {
-                                type_id: Rc::new(RefCell::new(Some(Type::Integer))),
-                                context: Context::default(),
-                            },
-                            position: Span::default(),
-                        },
-                        info: TypeInformation {
-                            type_id: Rc::new(RefCell::new(Some(Type::Integer))),
-                            context: Context::default(),
-                        },
-                        position: Span::default()
-                    }],
-                    expression: Box::new(Expression::Id(Id {
-                        name: "bar".into(),
-                        info: TypeInformation {
-                            type_id: Rc::new(RefCell::new(Some(Type::Integer))),
-                            context: Context::default(),
-                        },
-                        position: Span::default(),
-                    })),
-                    info: TypeInformation {
-                        type_id: Rc::new(RefCell::new(Some(Type::Function {
-                            params: vec![Type::Integer],
-                            return_value: Box::new(Type::Integer),
-                        }))),
-                        context: Context::default(),
-                    },
-                    position: Span::default()
-                }),
-                info: TypeInformation {
-                    type_id: Rc::new(RefCell::new(Some(Type::Void))),
-                    context: Context::default(),
-                },
-                position: Span::default()
-            }
-        );
-
-        let expected_foo_type = Some(Rc::new(RefCell::new(Some(Type::Function {
-            params: vec![Type::Integer],
-            return_value: Box::new(Type::Integer),
-        }))));
-
-        assert_eq!(
-            init.info.context.scope.resolve_name("foo"),
-            expected_foo_type
-        );
-
-        assert_eq!(
-            init.value.get_info().context.scope.resolve_name("foo"),
-            expected_foo_type
         );
 
         Ok(())

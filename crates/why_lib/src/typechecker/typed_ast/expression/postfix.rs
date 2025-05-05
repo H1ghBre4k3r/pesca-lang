@@ -6,7 +6,7 @@ use crate::{
         context::Context,
         error::{TypeCheckError, TypeMismatch, UndefinedVariable},
         types::Type,
-        TypeCheckable, TypeInformation, TypeResult,
+        TypeCheckable, TypeInformation, TypeResult, TypedConstruct,
     },
 };
 
@@ -64,15 +64,19 @@ impl TypeCheckable for Postfix<()> {
                         }
 
                         // check if types of parameters and arguments match
-                        for (i, arg) in checked_args.iter().enumerate() {
+                        for (i, arg) in checked_args.iter_mut().enumerate() {
                             let expected = params[i].clone();
                             let actual = arg_types[i].clone();
 
                             if actual != expected {
-                                return Err(TypeCheckError::TypeMismatch(
-                                    TypeMismatch { expected, actual },
-                                    arg.position(),
-                                ));
+                                if actual == Type::Unknown {
+                                    arg.update_type(expected)?;
+                                } else {
+                                    return Err(TypeCheckError::TypeMismatch(
+                                        TypeMismatch { expected, actual },
+                                        arg.position(),
+                                    ));
+                                }
                             }
                         }
 
@@ -163,28 +167,18 @@ impl TypeCheckable for Postfix<()> {
                 let expr_type = { expr.get_info().type_id.borrow() }.clone();
 
                 let type_id = match expr_type {
-                    Some(Type::Struct(_, fields)) => {
-                        let Some((_, type_id)) =
-                            fields.iter().find(|(name, _)| name == &property_name)
-                        else {
-                            return Err(TypeCheckError::UndefinedVariable(
-                                UndefinedVariable {
-                                    variable_name: property_name.clone(),
-                                },
-                                property_position,
-                            ));
-                        };
-
-                        Some(type_id.clone())
-                    }
-                    Some(other) => {
-                        return Err(TypeCheckError::TypeMismatch(
-                            TypeMismatch {
-                                expected: Type::Struct("_".into(), vec![]),
-                                actual: other,
-                            },
-                            position,
-                        ))
+                    Some(type_id) => {
+                        match ctx.scope.resolve_property_for_type(type_id, &property_name) {
+                            Some(type_id) => Some(type_id),
+                            None => {
+                                return Err(TypeCheckError::UndefinedVariable(
+                                    UndefinedVariable {
+                                        variable_name: property_name.clone(),
+                                    },
+                                    property_position,
+                                ));
+                            }
+                        }
                     }
                     None => None,
                 };

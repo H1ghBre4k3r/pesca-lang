@@ -1,10 +1,12 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    parser::ast::{Expression, Function, FunctionParameter, Id},
+    parser::ast::{Expression, Function, FunctionParameter, Id, Statement},
     typechecker::{
         context::Context,
-        error::{RedefinedConstant, TypeCheckError, TypeMismatch, UndefinedType},
+        error::{
+            RedefinedConstant, RedefinedFunction, TypeCheckError, TypeMismatch, UndefinedType,
+        },
         types::Type,
         ShallowCheck, TypeCheckable, TypeInformation, TypeResult, TypedConstruct,
     },
@@ -56,7 +58,9 @@ impl TypeCheckable for Function<()> {
         }
 
         match checked_statements.last() {
-            Some(last_stmt) => {
+            Some(
+                last_stmt @ Statement::YieldingExpression(_) | last_stmt @ Statement::Return(_),
+            ) => {
                 let last_stmt_type = last_stmt.get_info().type_id.clone();
                 let inner = last_stmt_type.borrow_mut();
 
@@ -84,15 +88,15 @@ impl TypeCheckable for Function<()> {
                     }
                 }
             }
-            None if return_type_id == Type::Void => {}
-            None => {
+            _ if return_type_id == Type::Void => {}
+            _ => {
                 return Err(TypeCheckError::TypeMismatch(
                     TypeMismatch {
                         expected: return_type_id,
                         actual: Type::Void,
                     },
                     return_type.position(),
-                ))
+                ));
             }
         }
 
@@ -149,20 +153,20 @@ impl TypeCheckable for Function<()> {
     }
 }
 
-impl ShallowCheck for Function<()> {
-    fn shallow_check(&self, ctx: &mut Context) -> TypeResult<()> {
+impl Function<()> {
+    /// Perform a shallow check without inserting any information into the scope. This is primarily
+    /// used for checking functions associated with instances.
+    pub fn simple_shallow_check(&self, ctx: &Context) -> TypeResult<Type> {
         let Function {
-            id,
             parameters,
             return_type,
-            position,
             ..
         } = self;
 
         let mut param_types = vec![];
 
         for FunctionParameter { type_name, .. } in parameters.iter() {
-            let Ok(param_type) = Type::try_from((type_name, &*ctx)) else {
+            let Ok(param_type) = Type::try_from((type_name, ctx)) else {
                 return Err(TypeCheckError::UndefinedType(
                     UndefinedType {
                         type_name: type_name.clone(),
@@ -174,7 +178,7 @@ impl ShallowCheck for Function<()> {
             param_types.push(param_type);
         }
 
-        let Ok(return_type) = Type::try_from((return_type, &*ctx)) else {
+        let Ok(return_type) = Type::try_from((return_type, ctx)) else {
             return Err(TypeCheckError::UndefinedType(
                 UndefinedType {
                     type_name: return_type.clone(),
@@ -183,20 +187,23 @@ impl ShallowCheck for Function<()> {
             ));
         };
 
-        if ctx
-            .scope
-            .add_constant(
-                &id.name,
-                Type::Function {
-                    params: param_types,
-                    return_value: Box::new(return_type),
-                },
-            )
-            .is_err()
-        {
-            return Err(TypeCheckError::RedefinedConstant(
-                RedefinedConstant {
-                    constant_name: id.name.clone(),
+        Ok(Type::Function {
+            params: param_types,
+            return_value: Box::new(return_type),
+        })
+    }
+}
+
+impl ShallowCheck for Function<()> {
+    fn shallow_check(&self, ctx: &mut Context) -> TypeResult<()> {
+        let Function { id, position, .. } = self;
+
+        let type_id = self.simple_shallow_check(&*ctx)?;
+
+        if ctx.scope.add_constant(&id.name, type_id).is_err() {
+            return Err(TypeCheckError::RedefinedFunction(
+                RedefinedFunction {
+                    function_name: id.name.clone(),
                 },
                 position.clone(),
             ));

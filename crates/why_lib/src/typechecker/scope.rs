@@ -4,24 +4,35 @@ use crate::parser::ast::Expression;
 
 use super::{error::TypeCheckError, types::Type, TypeInformation, TypedConstruct};
 
-type StoredVariable = (Expression<TypeInformation>, Rc<RefCell<Option<Type>>>, bool);
+#[derive(Clone)]
+struct StoredVariable {
+    value: Expression<TypeInformation>,
+    type_id: Rc<RefCell<Option<Type>>>,
+    mutable: bool,
+}
 
 #[derive(Clone, Default)]
-pub struct Stack {
+/// A frame within a stack, holding information about all variables, types, and constants.
+pub struct Frame {
+    /// All available variables in this frame
     variables: HashMap<String, StoredVariable>,
+    /// All types available within this frame
     types: HashMap<String, Type>,
+    /// All constants available in this frame
     constants: HashMap<String, Type>,
 }
 
-impl std::fmt::Debug for Stack {
+impl std::fmt::Debug for Frame {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Stack")
+        f.debug_struct("Frame")
             .field(
                 "variables",
                 &self
                     .variables
                     .iter()
-                    .map(|(name, (_, type_id, _))| (name, type_id.borrow().as_ref().cloned()))
+                    .map(|(name, StoredVariable { type_id, .. })| {
+                        (name, type_id.borrow().as_ref().cloned())
+                    })
                     .collect::<HashMap<_, _>>(),
             )
             .field(
@@ -33,17 +44,20 @@ impl std::fmt::Debug for Stack {
     }
 }
 
-type StackFrame = Rc<RefCell<Stack>>;
+type StackFrame = Rc<RefCell<Frame>>;
 
 #[derive(Clone, Debug)]
 pub struct Scope {
     stacks: Vec<StackFrame>,
+    /// all method available for certain type
+    methods: Rc<RefCell<HashMap<Type, HashMap<String, Type>>>>,
 }
 
 impl Default for Scope {
     fn default() -> Self {
         Scope {
             stacks: vec![StackFrame::default()],
+            methods: Rc::default(),
         }
     }
 }
@@ -81,6 +95,22 @@ impl Display for VariableAddError {
 
 impl std::error::Error for VariableAddError {}
 
+#[derive(Debug, Clone)]
+pub struct MethodAddError {
+    pub name: String,
+}
+
+impl Display for MethodAddError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "tried to add already existing method or property '{}'",
+            self.name
+        ))
+    }
+}
+
+impl std::error::Error for MethodAddError {}
+
 impl Scope {
     pub fn new() -> Scope {
         Self::default()
@@ -97,7 +127,7 @@ impl Scope {
     pub fn add_variable(
         &mut self,
         name: impl ToString,
-        expression: Expression<TypeInformation>,
+        value: Expression<TypeInformation>,
         mutable: bool,
     ) -> Result<(), VariableAddError> {
         let name = name.to_string();
@@ -107,11 +137,15 @@ impl Scope {
         }
 
         self.stacks.last().and_then(|scope| {
-            let type_id = expression.get_info().type_id;
-            scope
-                .borrow_mut()
-                .variables
-                .insert(name, (expression, type_id, mutable))
+            let type_id = value.get_info().type_id;
+            scope.borrow_mut().variables.insert(
+                name,
+                StoredVariable {
+                    value,
+                    type_id,
+                    mutable,
+                },
+            )
         });
 
         Ok(())
@@ -129,7 +163,7 @@ impl Scope {
                     .variables
                     .get(&name)
                     .cloned()
-                    .map(|(_, type_id, _)| type_id)
+                    .map(|StoredVariable { type_id, .. }| type_id)
             })
     }
 
@@ -145,7 +179,7 @@ impl Scope {
                     .variables
                     .get(&name)
                     .cloned()
-                    .map(|(_, _, mutable)| mutable)
+                    .map(|StoredVariable { mutable, .. }| mutable)
             })
     }
 
@@ -166,7 +200,12 @@ impl Scope {
 
         let scope = scope.borrow_mut();
 
-        let Some((mut exp, variable_type, _)) = scope.variables.get(&name).cloned() else {
+        let Some(StoredVariable {
+            value: mut exp,
+            type_id: variable_type,
+            ..
+        }) = scope.variables.get(&name).cloned()
+        else {
             unreachable!()
         };
 
@@ -237,6 +276,71 @@ impl Scope {
         self.get_constant(&name)
             .map(|t| Rc::new(RefCell::new(Some(t))))
             .or_else(|| self.get_variable(&name))
+    }
+
+    /// Add a method (i.e., an associated function) to a type. This function will panic if you try
+    /// to add a non-function.
+    pub fn add_method_to_type(
+        &mut self,
+        type_id: Type,
+        method_name: impl ToString,
+        method_type: Type,
+    ) -> Result<(), MethodAddError> {
+        assert!(
+            matches!(method_type, Type::Function { .. }),
+            "tried to add non function as method"
+        );
+        let method_name = method_name.to_string();
+
+        if let Type::Struct(_, props) = &type_id {
+            if props.iter().any(|(name, _)| *name == method_name) {
+                return Err(MethodAddError { name: method_name });
+            }
+        };
+
+        let mut current_methods = {
+            self.methods
+                .borrow()
+                .get(&type_id)
+                .cloned()
+                .unwrap_or(HashMap::default())
+        };
+
+        if current_methods.contains_key(&method_name) {
+            return Err(MethodAddError { name: method_name });
+        }
+
+        current_methods.insert(method_name, method_type);
+
+        self.methods.borrow_mut().insert(type_id, current_methods);
+
+        Ok(())
+    }
+
+    /// Try to resolve a property associated with a given type. For structs, fields are checked
+    /// first. After that (and by default for every other type), associated functions are checked.
+    pub fn resolve_property_for_type(
+        &mut self,
+        type_id: Type,
+        property: impl ToString,
+    ) -> Option<Type> {
+        let property_name = property.to_string();
+
+        if let Type::Struct(_, props) = &type_id {
+            if let Some(prop) = props
+                .iter()
+                .find(|(name, _)| *name == property_name)
+                .map(|(_, prop)| prop.clone())
+            {
+                return Some(prop);
+            }
+        }
+
+        self.methods
+            .borrow()
+            .get(&type_id)
+            .and_then(|methods| methods.get(&property_name))
+            .cloned()
     }
 }
 
