@@ -25,9 +25,10 @@ impl TypeInformation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ValidatedTypeInformation {
     pub type_id: Type,
+    #[serde(skip)]
     pub context: Context,
 }
 
@@ -44,16 +45,24 @@ impl TypeInformation {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TypeValidationError(Span);
+
+impl TypeValidationError {
+    const MESSAGE: &'static str = "Type must be known at compile time!";
+
+    pub fn span(&self) -> Span {
+        self.0.clone()
+    }
+
+    pub fn err(&self) -> String {
+        Self::MESSAGE.to_string()
+    }
+}
 
 impl Display for TypeValidationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            self.0
-                .to_string("Type must be known at compile time!")
-                .as_str(),
-        )
+        f.write_str(self.0.to_string(Self::MESSAGE).as_str())
     }
 }
 
