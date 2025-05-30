@@ -6,7 +6,7 @@ mod types;
 
 use crate::lexer::Span;
 use crate::parser::ast::TopLevelStatement;
-use anyhow::anyhow;
+use error::{InvalidMainSignature, MissingMainFunction};
 use std::fmt::{Display, Formatter};
 use std::{cell::RefCell, error::Error, fmt::Debug, rc::Rc};
 
@@ -25,9 +25,10 @@ impl TypeInformation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ValidatedTypeInformation {
     pub type_id: Type,
+    #[serde(skip)]
     pub context: Context,
 }
 
@@ -44,16 +45,24 @@ impl TypeInformation {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TypeValidationError(Span);
+
+impl TypeValidationError {
+    const MESSAGE: &'static str = "Type must be known at compile time!";
+
+    pub fn span(&self) -> Span {
+        self.0.clone()
+    }
+
+    pub fn err(&self) -> String {
+        Self::MESSAGE.to_string()
+    }
+}
 
 impl Display for TypeValidationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            self.0
-                .to_string("Type must be known at compile time!")
-                .as_str(),
-        )
+        f.write_str(self.0.to_string(Self::MESSAGE).as_str())
     }
 }
 
@@ -132,11 +141,44 @@ impl TypeChecker {
 
         let mut checked = vec![];
 
-        for stm in self.statements.into_iter() {
-            checked.push(stm.check(&mut self.context)?);
+        for stm in self.statements.iter() {
+            checked.push(stm.clone().check(&mut self.context)?);
         }
 
+        self.check_main_function()?;
+
         Ok(checked)
+    }
+
+    fn check_main_function(&mut self) -> Result<(), TypeCheckError> {
+        let main = self.context.scope.resolve_name("main");
+
+        let Some(main) = main else {
+            return Err(TypeCheckError::MissingMainFunction(MissingMainFunction));
+        };
+
+        let main = { main.borrow().clone().unwrap() };
+
+        match main {
+            Type::Function {
+                params,
+                return_value,
+            } => {
+                if !params.is_empty()
+                    && (*return_value != Type::Void || *return_value != Type::Integer)
+                {
+                    // TODO: we need to return the correct span of the main function for better
+                    // error display
+                    return Err(TypeCheckError::InvalidMainSignature(
+                        InvalidMainSignature,
+                        Span::default(),
+                    ));
+                }
+            }
+            _ => return Err(TypeCheckError::MissingMainFunction(MissingMainFunction)),
+        }
+
+        Ok(())
     }
 
     pub fn validate(

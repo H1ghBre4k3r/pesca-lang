@@ -3,7 +3,7 @@ use std::{fs, process};
 use clap::{Parser, command};
 use why_lib::{lexer::Lexer, parser::parse, typechecker::TypeChecker};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, serde::Serialize, serde::Deserialize)]
 #[command(author, version, about)]
 #[command(propagate_version = true)]
 pub struct Cli {
@@ -16,6 +16,12 @@ pub struct Cli {
 
     #[arg(short = 'p', long)]
     pub print_parsed: bool,
+
+    #[arg(short = 'c', long)]
+    pub print_checked: bool,
+
+    #[arg(short = 'v', long)]
+    pub print_validated: bool,
 
     #[arg(short, long, default_value = "a.out")]
     pub output: Option<std::path::PathBuf>,
@@ -58,6 +64,10 @@ pub fn compile_file(args: Cli) -> anyhow::Result<()> {
         }
     };
 
+    if args.print_checked {
+        println!("{checked:#?}");
+    }
+
     let validated = match TypeChecker::validate(checked) {
         Ok(validated) => validated,
         Err(e) => {
@@ -66,7 +76,9 @@ pub fn compile_file(args: Cli) -> anyhow::Result<()> {
         }
     };
 
-    println!("{validated:#?}");
+    if args.print_validated {
+        println!("{validated:#?}");
+    }
 
     Ok(())
 }

@@ -4,7 +4,7 @@ use crate::{lexer::Span, parser::ast::TypeName};
 
 use super::types::Type;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TypeCheckError {
     TypeMismatch(TypeMismatch, Span),
     UndefinedVariable(UndefinedVariable, Span),
@@ -15,6 +15,8 @@ pub enum TypeCheckError {
     RedefinedFunction(RedefinedFunction, Span),
     RedefinedMethod(RedefinedMethod, Span),
     ImmutableReassign(ImmutableReassign, Span),
+    MissingMainFunction(MissingMainFunction),
+    InvalidMainSignature(InvalidMainSignature, Span),
 }
 
 impl Display for TypeCheckError {
@@ -35,6 +37,8 @@ impl TypeCheckError {
             TypeCheckError::RedefinedFunction(_, span) => span.clone(),
             TypeCheckError::RedefinedMethod(_, span) => span.clone(),
             TypeCheckError::ImmutableReassign(_, span) => span.clone(),
+            TypeCheckError::MissingMainFunction(_) => Span::default(),
+            TypeCheckError::InvalidMainSignature(_, span) => span.clone(),
         }
     }
 
@@ -49,13 +53,15 @@ impl TypeCheckError {
             TypeCheckError::RedefinedFunction(e, _) => Box::new(e.clone()),
             TypeCheckError::RedefinedMethod(e, _) => Box::new(e.clone()),
             TypeCheckError::ImmutableReassign(e, _) => Box::new(e.clone()),
+            TypeCheckError::MissingMainFunction(e) => Box::new(e.clone()),
+            TypeCheckError::InvalidMainSignature(e, _) => Box::new(e.clone()),
         }
     }
 }
 
 impl Error for TypeCheckError {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TypeMismatch {
     pub expected: Type,
     pub actual: Type,
@@ -72,7 +78,7 @@ impl Display for TypeMismatch {
 
 impl Error for TypeMismatch {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndefinedVariable {
     pub variable_name: String,
 }
@@ -88,7 +94,7 @@ impl Display for UndefinedVariable {
 
 impl Error for UndefinedVariable {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndefinedType {
     pub type_name: TypeName,
 }
@@ -101,7 +107,7 @@ impl Display for UndefinedType {
 
 impl Error for UndefinedType {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MissingInitialisationType;
 
 impl Display for MissingInitialisationType {
@@ -112,7 +118,7 @@ impl Display for MissingInitialisationType {
 
 impl Error for MissingInitialisationType {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InvalidConstantType {
     pub constant_name: String,
 }
@@ -128,7 +134,7 @@ impl Display for InvalidConstantType {
 
 impl Error for InvalidConstantType {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RedefinedConstant {
     pub constant_name: String,
 }
@@ -144,7 +150,7 @@ impl Display for RedefinedConstant {
 
 impl Error for RedefinedConstant {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RedefinedFunction {
     pub function_name: String,
 }
@@ -160,7 +166,7 @@ impl Display for RedefinedFunction {
 
 impl Error for RedefinedFunction {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RedefinedMethod {
     pub type_id: Type,
     pub function_name: String,
@@ -177,7 +183,7 @@ impl Display for RedefinedMethod {
 
 impl Error for RedefinedMethod {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ImmutableReassign {
     pub variable_name: String,
 }
@@ -192,3 +198,25 @@ impl Display for ImmutableReassign {
 }
 
 impl Error for ImmutableReassign {}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MissingMainFunction;
+
+impl Display for MissingMainFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Missing main function!")
+    }
+}
+
+impl Error for MissingMainFunction {}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InvalidMainSignature;
+
+impl Display for InvalidMainSignature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("The main function does not have a valid signature. It must not accept any arguments and must return either void or an integer!")
+    }
+}
+
+impl Error for InvalidMainSignature {}

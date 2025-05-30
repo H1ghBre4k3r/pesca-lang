@@ -11,6 +11,8 @@ struct StoredVariable {
     mutable: bool,
 }
 
+// TODO: this should probably store the location (i.e, span) for all variables, constants and types
+// as well
 #[derive(Clone, Default)]
 /// A frame within a stack, holding information about all variables, types, and constants.
 pub struct Frame {
@@ -62,7 +64,7 @@ impl Default for Scope {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TypeAddError {
     pub name: String,
     pub type_id: Type,
@@ -79,7 +81,7 @@ impl Display for TypeAddError {
 
 impl std::error::Error for TypeAddError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VariableAddError {
     pub name: String,
 }
@@ -95,7 +97,7 @@ impl Display for VariableAddError {
 
 impl std::error::Error for VariableAddError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MethodAddError {
     pub name: String,
 }
