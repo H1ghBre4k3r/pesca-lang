@@ -1,7 +1,7 @@
-use std::{fs, process};
+use std::process;
 
 use clap::{Parser, command};
-use why_lib::{lexer::Lexer, parser::parse, typechecker::TypeChecker};
+use why_lib::Module;
 
 #[derive(Parser, Debug, serde::Serialize, serde::Deserialize)]
 #[command(author, version, about)]
@@ -38,17 +38,16 @@ impl VCArgs {
 }
 
 pub fn compile_file(args: VCArgs) -> anyhow::Result<()> {
-    let input = fs::read_to_string(args.file)?;
+    let module = Module::new(args.file.to_str().map(|path| path.to_string()).expect(""));
 
-    let lexer = Lexer::new(&input);
-    let tokens = lexer.lex()?;
+    let module = module.lex()?;
 
     if args.print_lexed {
-        println!("{tokens:#?}");
+        println!("{:#?}", module.inner);
     }
 
-    let statements = match parse(&mut tokens.into()) {
-        Ok(stms) => stms,
+    let module = match module.parse() {
+        Ok(module) => module,
         Err(e) => {
             eprintln!("{e}");
             process::exit(-1);
@@ -56,12 +55,11 @@ pub fn compile_file(args: VCArgs) -> anyhow::Result<()> {
     };
 
     if args.print_parsed {
-        println!("{statements:#?}");
+        println!("{:#?}", module.inner);
     }
 
-    let typechecker = TypeChecker::new(statements);
-    let checked = match typechecker.check() {
-        Ok(checked) => checked,
+    let module = match module.check() {
+        Ok(module) => module,
         Err(e) => {
             eprintln!("{e}");
             process::exit(-1);
@@ -69,11 +67,11 @@ pub fn compile_file(args: VCArgs) -> anyhow::Result<()> {
     };
 
     if args.print_checked {
-        println!("{checked:#?}");
+        println!("{:#?}", module.inner);
     }
 
-    let validated = match TypeChecker::validate(checked) {
-        Ok(validated) => validated,
+    let module = match module.validate() {
+        Ok(module) => module,
         Err(e) => {
             eprintln!("{e}");
             process::exit(-1);
@@ -81,8 +79,10 @@ pub fn compile_file(args: VCArgs) -> anyhow::Result<()> {
     };
 
     if args.print_validated {
-        println!("{validated:#?}");
+        println!("{module:#?}");
     }
+
+    module.hash();
 
     Ok(())
 }
