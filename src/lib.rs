@@ -27,6 +27,10 @@ pub struct VCArgs {
     #[arg(short = 'v', long)]
     pub print_validated: bool,
 
+    /// Force compiler pipeline.
+    #[arg(short = 'f', long)]
+    pub force: bool,
+
     #[arg(short, long, default_value = "a.out")]
     pub output: std::path::PathBuf,
 }
@@ -38,51 +42,79 @@ impl VCArgs {
 }
 
 pub fn compile_file(args: VCArgs) -> anyhow::Result<()> {
-    let module = Module::new(args.file.to_str().map(|path| path.to_string()).expect(""));
+    let module = Module::new(args.file.to_str().map(|path| path.to_string()).expect(""))?;
 
-    let module = module.lex()?;
+    if !module.exists() || args.force {
+        let module = module.lex()?;
 
-    if args.print_lexed {
-        println!("{:#?}", module.inner);
-    }
-
-    let module = match module.parse() {
-        Ok(module) => module,
-        Err(e) => {
-            eprintln!("{e}");
-            process::exit(-1);
+        if args.print_lexed {
+            println!("{:#?}", module.inner);
         }
-    };
 
-    if args.print_parsed {
-        println!("{:#?}", module.inner);
-    }
+        let module = match module.parse() {
+            Ok(module) => module,
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(-1);
+            }
+        };
 
-    let module = match module.check() {
-        Ok(module) => module,
-        Err(e) => {
-            eprintln!("{e}");
-            process::exit(-1);
+        if args.print_parsed {
+            println!("{:#?}", module.inner);
         }
-    };
 
-    if args.print_checked {
-        println!("{:#?}", module.inner);
-    }
+        let module = match module.check() {
+            Ok(module) => module,
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(-1);
+            }
+        };
 
-    let module = match module.validate() {
-        Ok(module) => module,
-        Err(e) => {
-            eprintln!("{e}");
-            process::exit(-1);
+        if args.print_checked {
+            println!("{:#?}", module.inner);
         }
-    };
 
-    if args.print_validated {
-        println!("{module:#?}");
+        let module = match module.validate() {
+            Ok(module) => module,
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(-1);
+            }
+        };
+
+        if args.print_validated {
+            println!("{module:#?}");
+        }
+
+        module.codegen();
+    } else {
+        if args.print_lexed {
+            eprintln!(
+                "[WARN] CLI argument '-l' | '--print-lexed' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
+
+        if args.print_parsed {
+            eprintln!(
+                "[WARN] CLI argument '-p' | '--print-parsed' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
+
+        if args.print_checked {
+            eprintln!(
+                "[WARN] CLI argument '-c' | '--print-checked' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
+
+        if args.print_validated {
+            eprintln!(
+                "[WARN] CLI argument '-v' | '--print-validated' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
     }
 
-    module.codegen(args.output.to_str().unwrap());
+    module.compile(args.output.to_str().unwrap());
 
     Ok(())
 }
