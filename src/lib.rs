@@ -1,7 +1,7 @@
-use std::{fs, process};
+use std::process;
 
 use clap::{Parser, command};
-use why_lib::{lexer::Lexer, parser::parse, typechecker::TypeChecker};
+use why_lib::Module;
 
 #[derive(Parser, Debug, serde::Serialize, serde::Deserialize)]
 #[command(author, version, about)]
@@ -27,8 +27,12 @@ pub struct VCArgs {
     #[arg(short = 'v', long)]
     pub print_validated: bool,
 
+    /// Force compiler pipeline.
+    #[arg(short = 'f', long)]
+    pub force: bool,
+
     #[arg(short, long, default_value = "a.out")]
-    pub output: Option<std::path::PathBuf>,
+    pub output: std::path::PathBuf,
 }
 
 impl VCArgs {
@@ -38,51 +42,79 @@ impl VCArgs {
 }
 
 pub fn compile_file(args: VCArgs) -> anyhow::Result<()> {
-    let input = fs::read_to_string(args.file)?;
+    let module = Module::new(args.file.to_str().map(|path| path.to_string()).expect(""))?;
 
-    let lexer = Lexer::new(&input);
-    let tokens = lexer.lex()?;
+    if !module.exists() || args.force {
+        let module = module.lex()?;
 
-    if args.print_lexed {
-        println!("{tokens:#?}");
-    }
-
-    let statements = match parse(&mut tokens.into()) {
-        Ok(stms) => stms,
-        Err(e) => {
-            eprintln!("{e}");
-            process::exit(-1);
+        if args.print_lexed {
+            println!("{:#?}", module.inner);
         }
-    };
 
-    if args.print_parsed {
-        println!("{statements:#?}");
-    }
+        let module = match module.parse() {
+            Ok(module) => module,
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(-1);
+            }
+        };
 
-    let typechecker = TypeChecker::new(statements);
-    let checked = match typechecker.check() {
-        Ok(checked) => checked,
-        Err(e) => {
-            eprintln!("{e}");
-            process::exit(-1);
+        if args.print_parsed {
+            println!("{:#?}", module.inner);
         }
-    };
 
-    if args.print_checked {
-        println!("{checked:#?}");
-    }
+        let module = match module.check() {
+            Ok(module) => module,
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(-1);
+            }
+        };
 
-    let validated = match TypeChecker::validate(checked) {
-        Ok(validated) => validated,
-        Err(e) => {
-            eprintln!("{e}");
-            process::exit(-1);
+        if args.print_checked {
+            println!("{:#?}", module.inner);
         }
-    };
 
-    if args.print_validated {
-        println!("{validated:#?}");
+        let module = match module.validate() {
+            Ok(module) => module,
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(-1);
+            }
+        };
+
+        if args.print_validated {
+            println!("{module:#?}");
+        }
+
+        module.codegen();
+    } else {
+        if args.print_lexed {
+            eprintln!(
+                "[WARN] CLI argument '-l' | '--print-lexed' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
+
+        if args.print_parsed {
+            eprintln!(
+                "[WARN] CLI argument '-p' | '--print-parsed' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
+
+        if args.print_checked {
+            eprintln!(
+                "[WARN] CLI argument '-c' | '--print-checked' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
+
+        if args.print_validated {
+            eprintln!(
+                "[WARN] CLI argument '-v' | '--print-validated' ignored since module is already present! Use '-f' to run the compiler pipeline!"
+            );
+        }
     }
+
+    module.compile(args.output.to_str().unwrap());
 
     Ok(())
 }
