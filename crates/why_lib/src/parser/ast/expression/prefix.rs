@@ -1,4 +1,4 @@
-use crate::lexer::Span;
+use crate::{lexer::Span, parser::combinators::Comb};
 
 use super::Expression;
 
