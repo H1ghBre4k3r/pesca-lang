@@ -1,0 +1,5 @@
+struct Foo {
+    foo: i64,
+    bar: i64;
+    baz: i64,
+}

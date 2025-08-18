@@ -353,17 +353,32 @@ where
                 }
             }
             Comb::RepeatUntil { repeated, closing } => {
-                let mut current_index = tokens.get_index();
-                // TODO: this should check for matches of `closing` before.
-                while let Ok(mut result) = repeated.parse(tokens) {
-                    matched.append(&mut result);
-                    current_index = tokens.get_index();
-                }
-                tokens.set_index(current_index);
+                loop {
+                    // Check for the closing token first, but don't consume it yet.
+                    let current_index = tokens.get_index();
+                    if closing.parse(tokens).is_ok() {
+                        tokens.set_index(current_index);
+                        break;
+                    }
+                    tokens.set_index(current_index);
 
-                let mut result = closing.parse(tokens).inspect_err(|e| {
-                    tokens.add_error(e.clone());
-                })?;
+                    // Now, try to parse the repeated part.
+                    let pre_parse_index = tokens.get_index();
+                    let mut result = repeated.parse(tokens)?;
+                    matched.append(&mut result);
+                    let post_parse_index = tokens.get_index();
+
+                    if pre_parse_index == post_parse_index {
+                        // To prevent infinite loops, we must ensure the parser consumes tokens.
+                        return Err(ParseError {
+                            message: "RepeatUntil inner parser did not consume any tokens".into(),
+                            position: tokens.last_token().map(|t| t.position()),
+                        });
+                    }
+                }
+
+                // Now, consume the closing token.
+                let mut result = closing.parse(tokens)?;
                 matched.append(&mut result);
             }
         }
