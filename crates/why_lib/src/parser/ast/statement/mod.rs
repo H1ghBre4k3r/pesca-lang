@@ -23,12 +23,11 @@ use crate::{
     parser::{combinators::Comb, FromTokens, ParseError, ParseState},
 };
 
-use super::{AstNode, Expression, Function, If};
+use super::{AstNode, Expression, Function};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Statement<T> {
     Function(Function<T>),
-    If(If<T>),
     WhileLoop(WhileLoop<T>),
     Initialization(Initialisation<T>),
     Constant(Constant<T>),
@@ -283,7 +282,6 @@ where
     pub fn get_info(&self) -> T {
         match self {
             Statement::Function(Function { info, .. }) => info.clone(),
-            Statement::If(If { info, .. }) => info.clone(),
             Statement::WhileLoop(WhileLoop { info, .. }) => info.clone(),
             Statement::Initialization(Initialisation { info, .. }) => info.clone(),
             Statement::Constant(Constant { info, .. }) => info.clone(),
@@ -300,7 +298,6 @@ where
     pub fn position(&self) -> Span {
         match self {
             Statement::Function(Function { position, .. }) => position.clone(),
-            Statement::If(If { position, .. }) => position.clone(),
             Statement::WhileLoop(WhileLoop { position, .. }) => position.clone(),
             Statement::Initialization(Initialisation { position, .. }) => position.clone(),
             Statement::Constant(Constant { position, .. }) => position.clone(),
@@ -319,7 +316,7 @@ where
 mod tests {
     use crate::{
         lexer::{Lexer, Span},
-        parser::ast::{BinaryExpression, BinaryOperator, Id, Num, Postfix, TypeName},
+        parser::ast::{BinaryExpression, BinaryOperator, Id, If, Num, Postfix, TypeName},
     };
 
     use super::*;
