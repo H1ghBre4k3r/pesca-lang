@@ -1,3 +1,131 @@
+use std::{cell::RefCell, collections::HashMap, fs, process::Command};
+
+use codegen::{CodeGen, CodegenContext, ScopeFrame};
+use inkwell::context::Context;
+use lexer::{Lexer, Token};
+use parser::{ast::TopLevelStatement, parse};
+use sha2::{Digest, Sha256};
+use typechecker::{TypeChecker, TypeInformation, ValidatedTypeInformation};
+
+pub mod codegen;
 pub mod lexer;
 pub mod parser;
 pub mod typechecker;
+
+#[derive(Debug, Clone)]
+pub struct Module<T> {
+    path: String,
+    input: String,
+    pub inner: T,
+}
+
+impl<A> Module<A> {
+    fn convert<B>(&self, inner: B) -> Module<B> {
+        let Module { path, input, .. } = self;
+
+        Module {
+            path: path.clone(),
+            input: input.clone(),
+            inner,
+        }
+    }
+
+    pub fn hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(&self.input);
+        let result = hasher.finalize();
+        format!("{result:x}")
+    }
+
+    pub fn file_path(&self) -> String {
+        format!("out/{}.ll", self.hash())
+    }
+
+    pub fn exists(&self) -> bool {
+        matches!(std::fs::exists(self.file_path()), Ok(true))
+    }
+
+    pub fn compile(&self, out: &str) {
+        if let Err(e) = Command::new("clang")
+            .arg(self.file_path())
+            .arg("-o")
+            .arg(out)
+            .output()
+        {
+            eprintln!("{e}")
+        }
+    }
+}
+
+impl Module<()> {
+    pub fn new(path: String) -> anyhow::Result<Self> {
+        let input = fs::read_to_string(&path)?;
+
+        Ok(Self {
+            path,
+            inner: (),
+            input,
+        })
+    }
+
+    pub fn lex(&self) -> anyhow::Result<Module<Vec<Token>>> {
+        let lexer = Lexer::new(&self.input);
+
+        let new = self.convert(lexer.lex()?);
+
+        Ok(new)
+    }
+}
+
+impl Module<Vec<Token>> {
+    pub fn parse(&self) -> anyhow::Result<Module<Vec<TopLevelStatement<()>>>> {
+        let tokens = self.inner.clone();
+
+        Ok(self.convert(parse(&mut tokens.into())?))
+    }
+}
+
+impl Module<Vec<TopLevelStatement<()>>> {
+    pub fn check(&self) -> anyhow::Result<Module<Vec<TopLevelStatement<TypeInformation>>>> {
+        let statements = self.inner.clone();
+        let typechecker = TypeChecker::new(statements);
+
+        Ok(self.convert(typechecker.check()?))
+    }
+}
+
+impl Module<Vec<TopLevelStatement<TypeInformation>>> {
+    pub fn validate(
+        &self,
+    ) -> anyhow::Result<Module<Vec<TopLevelStatement<ValidatedTypeInformation>>>> {
+        Ok(self.convert(TypeChecker::validate(self.inner.clone())?))
+    }
+}
+
+impl Module<Vec<TopLevelStatement<ValidatedTypeInformation>>> {
+    pub fn codegen(&self) {
+        let context = Context::create();
+        let module = context.create_module(&self.hash());
+        let builder = context.create_builder();
+
+        let codegen_context = CodegenContext {
+            context: &context,
+            module,
+            builder,
+            types: RefCell::new(HashMap::default()),
+            scopes: RefCell::new(vec![ScopeFrame::default()]),
+        };
+
+        // TODO: this _must_ include insertion of functions types, etc.
+        // Otherwise, one can not reference functions which are later in the files
+        let top_level_statements = &self.inner;
+        for statement in top_level_statements {
+            statement.codegen(&codegen_context);
+        }
+
+        codegen_context
+            .module
+            .print_to_file(self.file_path())
+            .expect("Error while writing to fil");
+    }
+}

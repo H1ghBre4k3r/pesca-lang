@@ -23,12 +23,11 @@ use crate::{
     parser::{combinators::Comb, FromTokens, ParseError, ParseState},
 };
 
-use super::{AstNode, Expression, Function, If};
+use super::{AstNode, Expression, Function};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Statement<T> {
     Function(Function<T>),
-    If(If<T>),
     WhileLoop(WhileLoop<T>),
     Initialization(Initialisation<T>),
     Constant(Constant<T>),
@@ -136,15 +135,6 @@ impl FromTokens<Token> for Statement<()> {
         };
 
         match next {
-            Token::IfKeyword { .. } => {
-                let matcher = Comb::IF;
-                let result = matcher.parse(tokens)?;
-
-                let [AstNode::If(if_statement)] = result.as_slice() else {
-                    unreachable!()
-                };
-                Ok(Statement::If(if_statement.clone()).into())
-            }
             Token::FnKeyword { .. } => {
                 let matcher = Comb::FUNCTION;
                 let result = matcher.parse(tokens)?;
@@ -292,7 +282,6 @@ where
     pub fn get_info(&self) -> T {
         match self {
             Statement::Function(Function { info, .. }) => info.clone(),
-            Statement::If(If { info, .. }) => info.clone(),
             Statement::WhileLoop(WhileLoop { info, .. }) => info.clone(),
             Statement::Initialization(Initialisation { info, .. }) => info.clone(),
             Statement::Constant(Constant { info, .. }) => info.clone(),
@@ -309,7 +298,6 @@ where
     pub fn position(&self) -> Span {
         match self {
             Statement::Function(Function { position, .. }) => position.clone(),
-            Statement::If(If { position, .. }) => position.clone(),
             Statement::WhileLoop(WhileLoop { position, .. }) => position.clone(),
             Statement::Initialization(Initialisation { position, .. }) => position.clone(),
             Statement::Constant(Constant { position, .. }) => position.clone(),
@@ -328,7 +316,7 @@ where
 mod tests {
     use crate::{
         lexer::{Lexer, Span},
-        parser::ast::{BinaryExpression, BinaryOperator, Id, Num, TypeName},
+        parser::ast::{BinaryExpression, BinaryOperator, Id, If, Num, Postfix, TypeName},
     };
 
     use super::*;
@@ -381,7 +369,7 @@ mod tests {
         let result = Statement::parse(&mut tokens);
 
         assert_eq!(
-            Ok(Statement::If(If {
+            Ok(Statement::YieldingExpression(Expression::If(If {
                 condition: Box::new(Expression::Id(Id {
                     name: "x".into(),
                     info: (),
@@ -407,7 +395,7 @@ mod tests {
                 )))],
                 info: (),
                 position: Span::default()
-            })
+            }))
             .into()),
             result
         )
@@ -423,7 +411,7 @@ mod tests {
         let result = Statement::parse(&mut tokens);
 
         assert_eq!(
-            Ok(Statement::If(If {
+            Ok(Statement::Expression(Expression::If(If {
                 condition: Box::new(Expression::Id(Id {
                     name: "x".into(),
                     info: (),
@@ -449,7 +437,7 @@ mod tests {
                 )))],
                 info: (),
                 position: Span::default()
-            })
+            }))
             .into()),
             result
         )
@@ -465,34 +453,41 @@ mod tests {
         let result = Statement::parse(&mut tokens);
 
         assert_eq!(
-            Ok(Statement::If(If {
-                condition: Box::new(Expression::Id(Id {
-                    name: "x".into(),
+            Ok(
+                Statement::YieldingExpression(Expression::Postfix(Postfix::Call {
+                    expr: Box::new(Expression::If(If {
+                        condition: Box::new(Expression::Id(Id {
+                            name: "x".into(),
+                            info: (),
+                            position: Span::default()
+                        })),
+                        statements: vec![Statement::YieldingExpression(Expression::Binary(
+                            Box::new(BinaryExpression {
+                                left: Expression::Num(Num::Integer(3, (), Span::default())),
+                                right: Expression::Num(Num::Integer(4, (), Span::default())),
+                                operator: BinaryOperator::Add,
+                                info: (),
+                                position: Span::default()
+                            })
+                        ))],
+                        else_statements: vec![Statement::YieldingExpression(Expression::Binary(
+                            Box::new(BinaryExpression {
+                                left: Expression::Num(Num::Integer(42, (), Span::default())),
+                                right: Expression::Num(Num::Integer(1337, (), Span::default())),
+                                operator: BinaryOperator::Add,
+                                info: (),
+                                position: Span::default()
+                            })
+                        ))],
+                        info: (),
+                        position: Span::default()
+                    })),
+                    args: vec![],
                     info: (),
-                    position: Span::default()
-                })),
-                statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression {
-                        left: Expression::Num(Num::Integer(3, (), Span::default())),
-                        right: Expression::Num(Num::Integer(4, (), Span::default())),
-                        operator: BinaryOperator::Add,
-                        info: (),
-                        position: Span::default()
-                    }
-                )))],
-                else_statements: vec![Statement::YieldingExpression(Expression::Binary(Box::new(
-                    BinaryExpression {
-                        left: Expression::Num(Num::Integer(42, (), Span::default())),
-                        right: Expression::Num(Num::Integer(1337, (), Span::default())),
-                        operator: BinaryOperator::Add,
-                        info: (),
-                        position: Span::default()
-                    }
-                )))],
-                info: (),
-                position: Span::default()
-            })
-            .into()),
+                    position: Span::default(),
+                }))
+                .into()
+            ),
             result
         )
     }

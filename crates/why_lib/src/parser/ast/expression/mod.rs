@@ -102,6 +102,9 @@ impl FromTokens<Token> for Expression<()> {
     fn parse(tokens: &mut ParseState<Token>) -> Result<AstNode, ParseError> {
         let position = tokens.span()?;
 
+        let allowed_exprs_in_prefix =
+            Comb::NUM | Comb::ID | (Comb::LPAREN >> Comb::EXPR >> Comb::RPAREN);
+
         let mut expr = match tokens.peek() {
             Some(Token::LParen { .. }) => {
                 let matcher = Comb::LPAREN >> Comb::EXPR >> Comb::RPAREN;
@@ -113,11 +116,17 @@ impl FromTokens<Token> for Expression<()> {
                 Expression::Parens(Box::new(expr))
             }
             Some(Token::Minus { .. }) => {
-                let matcher = Comb::MINUS >> Comb::EXPR;
+                let matcher = Comb::MINUS >> allowed_exprs_in_prefix;
                 let result = matcher.parse(tokens)?;
 
-                let Some(AstNode::Expression(expr)) = result.first() else {
-                    unreachable!();
+                let expr = match result.first() {
+                    Some(node) => match node {
+                        AstNode::Expression(expression) => expression.clone(),
+                        AstNode::Id(id) => Expression::Id(id.clone()),
+                        AstNode::Num(num) => Expression::Num(num.clone()),
+                        _ => unreachable!(),
+                    },
+                    None => unreachable!(),
                 };
 
                 Expression::Prefix(Prefix::Minus {
@@ -126,11 +135,17 @@ impl FromTokens<Token> for Expression<()> {
                 })
             }
             Some(Token::ExclamationMark { .. }) => {
-                let matcher = Comb::EXCLAMATION_MARK >> Comb::EXPR;
+                let matcher = Comb::EXCLAMATION_MARK >> allowed_exprs_in_prefix;
                 let result = matcher.parse(tokens)?;
 
-                let Some(AstNode::Expression(expr)) = result.first() else {
-                    unreachable!();
+                let expr = match result.first() {
+                    Some(node) => match node {
+                        AstNode::Expression(expression) => expression.clone(),
+                        AstNode::Id(id) => Expression::Id(id.clone()),
+                        AstNode::Num(num) => Expression::Num(num.clone()),
+                        _ => unreachable!(),
+                    },
+                    None => unreachable!(),
                 };
 
                 Expression::Prefix(Prefix::Negation {
@@ -202,6 +217,7 @@ impl FromTokens<Token> for Expression<()> {
                 Token::Plus { .. }
                 | Token::Minus { .. }
                 | Token::Times { .. }
+                | Token::Divide { .. }
                 | Token::Equal { .. }
                 | Token::GreaterThan { .. }
                 | Token::LessThan { .. }
@@ -324,6 +340,13 @@ impl Expression<()> {
                 left: lhs,
                 right: rhs,
                 operator: BinaryOperator::Multiply,
+                info: (),
+                position,
+            },
+            Token::Divide { .. } => BinaryExpression {
+                left: lhs,
+                right: rhs,
+                operator: BinaryOperator::Divide,
                 info: (),
                 position,
             },
@@ -935,7 +958,7 @@ mod tests {
 
     #[test]
     fn test_complex_minus() {
-        let mut tokens = Lexer::new("-someFunction()")
+        let mut tokens = Lexer::new("-(someFunction())")
             .lex()
             .expect("something is wrong")
             .into();
@@ -979,7 +1002,7 @@ mod tests {
 
     #[test]
     fn test_complex_negation() {
-        let mut tokens = Lexer::new("!someFunction()")
+        let mut tokens = Lexer::new("!(someFunction())")
             .lex()
             .expect("something is wrong")
             .into();

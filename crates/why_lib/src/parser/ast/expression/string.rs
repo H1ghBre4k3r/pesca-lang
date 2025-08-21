@@ -1,3 +1,5 @@
+use unescape::unescape;
+
 use crate::lexer::{Span, Token};
 use crate::parser::ast::AstNode;
 use crate::parser::{FromTokens, ParseError, ParseState};
@@ -20,6 +22,7 @@ impl FromTokens<Token> for AstString<()> {
                 .strip_suffix('\"')
                 .unwrap()
                 .to_string();
+            let value = unescape(&value).unwrap_or(value);
             Ok(AstString {
                 value,
                 position,
